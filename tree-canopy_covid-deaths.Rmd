@@ -19,8 +19,36 @@ tree_canopy_raw <- read_csv("tree_data/HPI-Individual-Indicators/HPI2_treecanopy
 covid_raw <- read.csv("covid_data/covid19cases_test.csv")
 ```
 
+```{r Wrangling tree data}
+tree_data <- 
+  tree_canopy_raw %>% 
+  clean_names() %>% 
+  select(-c(indicator, treecanopy_n, treecanopy_d, notes) # remove empty columns
+         ) %>% 
+  group_by(county_name) %>% 
+  summarise(mean(treecanopy_pct))
+  
+```
 
+```{r Wrangling covid data}
+covid_data <- 
+  covid_raw %>% 
+  clean_names() %>% 
+  # keep only cumulative columns
+  select(-c(cases, deaths, total_tests, positive_tests, 
+            reported_cases, reported_deaths, reported_tests)
+         ) %>% 
+  filter(date == "2021-02-01", # one column per county
+         area_type == "County", # remove CA row
+         !grepl(c("Unknow|Out of state|Alpine"), area) # remove counties not in tree data
+         ) %>% 
+  rename(county_name = area)
+```
 
+```{r Combine data}
+data_comb <- left_join(covid_data, tree_data, by = "county_name")
+
+```
 
 
 
@@ -36,3 +64,4 @@ covid_raw <- read.csv("covid_data/covid19cases_test.csv")
 
 ### References
 1. 
+2. 
