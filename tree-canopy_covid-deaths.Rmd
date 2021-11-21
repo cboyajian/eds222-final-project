@@ -1,0 +1,38 @@
+---
+title: "Tree Canopy - COVID death rate"
+author: "Clarissa Boyajian"
+date: "11/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(lubridate)
+library(janitor)
+```
+
+```{r Read in data}
+tree_canopy_raw <- read_csv("tree_data/HPI-Individual-Indicators/HPI2_treecanopy.csv")
+
+covid_raw <- read.csv("covid_data/covid19cases_test.csv")
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### References
+1. 
