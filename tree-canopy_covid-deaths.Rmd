@@ -132,7 +132,7 @@ ggplot(data = covid_raw, aes(x = date, y = deaths, col = area)) +
 
 
 ```{r}
-mod <- lm(county_av_treecanopy_pct ~ death_rate, data = data_comb)
+mod <- lm(county_av_treecanopy_pct ~ death_rate, data = data_comb_1yearsummmary)
 
 summary(mod)
 ```
