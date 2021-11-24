@@ -8,15 +8,23 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
 
+options(scipen = 999)
+
 library(tidyverse)
 library(lubridate)
 library(janitor)
+library(sf)
+library(tmap)
+library(patchwork)
 ```
 
 ```{r Read in data}
+county_geom_raw <- st_read("map_data/counties.shp") 
+
 tree_canopy_raw <- read_csv("tree_data/HPI-Individual-Indicators/HPI2_treecanopy.csv")
 
-covid_raw <- read.csv("covid_data/covid19cases_test.csv")
+covid_raw_johnshopkins <- read.csv("covid_data/covid19cases_test.csv") # 2020-02-01 - 2021-11-18
+covid_raw_latimes <- read.csv("covid_data/cdph-county-cases-deaths.csv") # 2020-02-01 - 2021-11-22
 ```
 
 ```{r Parameters}
@@ -38,27 +46,13 @@ county_region9 <- c("Orange")
 county_region10 <- c("Imperial", "San Diego")
 ```
 
+## Data Wrangling
 
-```{r Wrangling tree data}
-tree_data <- 
-  tree_canopy_raw %>% 
+```{r Wrangling geometry data}
+county_geom <- 
+  county_geom_raw %>% 
   clean_names() %>% 
-  select(-c(indicator, treecanopy_n, treecanopy_d, notes) # remove empty columns
-         ) %>% 
-  group_by(county_name) %>% 
-  summarise(county_av_treecanopy_pct = mean(treecanopy_pct))
-  
-```
-
-```{r Wrangling covid data}
-covid_data <- 
-  covid_raw %>% 
-  clean_names() %>% 
-    filter(area_type == "County", # remove CA row
-         !grepl(c("Unknow|Out of state|Alpine"), area) # remove counties not in tree data
-         ) %>% 
-  rename(county_name = area) %>% 
-  mutate(date = ymd(date)) %>% 
+  rename(county_name = name) %>% 
   mutate(county_region = case_when(county_name %in% county_region1 ~ "01",
                                    county_name %in% county_region2 ~ "02",
                                    county_name %in% county_region3 ~ "03",
@@ -68,71 +62,178 @@ covid_data <-
                                    county_name %in% county_region7 ~ "07",
                                    county_name %in% county_region8 ~ "08",
                                    county_name %in% county_region9 ~ "09",
-                                   county_name %in% county_region10 ~ "10"))
+                                   county_name %in% county_region10 ~ "10"),
+         county_region_name = case_when(county_name %in% county_region1 ~ "Superior California",
+                                        county_name %in% county_region2 ~ "North Coast",
+                                        county_name %in% county_region3 ~ "San Francisco Bay Area",
+                                        county_name %in% county_region4 ~ "Northern San Joaquin Valley",
+                                        county_name %in% county_region5 ~ "Central Coast",
+                                        county_name %in% county_region6 ~ "Southern San Joaquin Valley",
+                                        county_name %in% county_region7 ~ "Inland Empire",
+                                        county_name %in% county_region8 ~ "Los Angeles County",
+                                        county_name %in% county_region9 ~ "Orange County",
+                                        county_name %in% county_region10 ~ "San Diego - Imperial")) %>% 
+  mutate(county_region_name = fct_relevel(county_region_name, levels = c("Superior California", "North Coast", "San Francisco Bay Area", "Northern San Joaquin Valley", "Central Coast", "Southern San Joaquin Valley", "Inland Empire", "Los Angeles County", "Orange County", "San Diego - Imperial")))
 ```
 
+```{r Wrangling tree data}
+tree_data <- 
+  tree_canopy_raw %>% 
+  clean_names() %>% 
+  select(-c(indicator, treecanopy_n, treecanopy_d, notes) # remove empty columns
+        ) %>% 
+  group_by(county_name) %>% 
+  summarise(county_treecanopy_pct = mean(treecanopy_pct))
+```
 
-
-
+```{r Wrangling covid data, eval=FALSE}
+covid_data_johnshopkins <- 
+  covid_raw_johnshopkins %>% 
+  clean_names() %>% 
+    filter(area_type == "County", # remove CA row
+         !grepl(c("Unknow|Out of state|Alpine"), area) # remove county not in tree data and non-counties
+         ) %>% 
+  rename(county_name = area) %>% 
+  mutate(date = as.Date(ymd(date)))
+```
 
 ```{r}
-covid_month_av <- 
-  covid_data %>% 
-  mutate(month = month(date, label = TRUE)) %>% 
-  group_by(county_region, month) %>% 
-  summarise(monthly_death_av = mean(deaths),
-            monthly_positive_test_av = mean(positive_tests))
+covid_data_latimes <- 
+  covid_raw_latimes %>% 
+  clean_names() %>% 
+  filter(!grepl(c("Alpine"), county)) %>% # remove county not in tree data and non-counties
+  select(-fips) %>% # remove column contained in counties geom data
+  rename(county_name = county) %>% 
+  mutate(date = as.Date(ymd(date)))
+```
 
-ggplot(data = covid_month_av, aes(x = month, y = monthly_death_av, col = county_region)) +
-  geom_point()
+
+## Analysis
+
+
+```{r Basic analysis covid data}
+covid_county_average <- 
+  covid_data_latimes %>% 
+  group_by(county_name) %>% 
+  summarise(population_av = mean(population),
+            confirmed_cases_av = mean(confirmed_cases),
+            reported_deaths_av = mean(reported_deaths)) %>% 
+  mutate(deaths_per_case_pct = reported_deaths_av / confirmed_cases_av,
+         deaths_per_pop_pct = reported_deaths_av / population_av)
+```
+
+
+```{r Combining data}
+full_data_combined <- 
+  left_join(x = covid_data_latimes, y = tree_data, by = "county_name") %>% 
+  left_join(y = county_geom, by = "county_name")
+
+tree_data_geom <- 
+  left_join(x = tree_data, y = county_geom, by = "county_name") %>% 
+  st_as_sf()
+
+covid_county_average_geom <- 
+  left_join(x = covid_county_average, y = county_geom, by = "county_name") %>% 
+  st_as_sf()
+```
+
+
+## Initial viz
+
+```{r}
+tm_shape(tree_data_geom) +
+  tm_borders(col = "black", alpha = .65) +
+  tm_fill(col = "county_treecanopy_pct",
+          style = "cont", 
+          n = 5,
+          palette ="viridis")
+
+tm_shape(covid_county_average_geom) +
+  tm_borders(col = "black", alpha = .65) +
+  tm_fill(col = "deaths_per_case_pct",
+          style = "cont", 
+          n = 5,
+          palette ="viridis")
 ```
 
 
 
+## Basic Analysis and viz
+
+```{r Covid basic analysis}
+covid_county_region_month_average <- 
+  covid_county_average_geom %>% 
+  group_by(county_region_name, county_region) %>% 
+  summarise(county_region_monthly_death_av = mean(reported_deaths_av),
+            county_region_monthly_positive_test_av = mean(confirmed_cases_av))
+  
+  
+
+```
+
+```{r Tree basic analysis}
+tree_county_region <- 
+  tree_data_geom %>% 
+  group_by(county_region_name, county_region) %>% 
+  summarise(county_region_tree_pct = mean(county_treecanopy_pct))
+```
 
 
+```{r Plot basic analysis}
+covid_county_region_month_av_plot <- 
+  ggplot(data = covid_county_region_month_average, 
+         aes(x = county_region_monthly_death_av, 
+             y = county_region_name, 
+             fill = county_region_name)) +
+  geom_col()+
+  scale_fill_viridis_d()
+
+tree_county_region_plot <- 
+  ggplot(data = tree_county_region,
+         aes(x = county_region_tree_pct,
+             y = county_region_name,
+             fill = county_region_name)) +
+  geom_col() +
+  scale_fill_viridis_d()
+
+covid_county_region_month_av_plot / tree_county_region_plot +plot_layout(guides = "collect")
+```
+
+
+## Analysis
 
 ```{r Summary covid data}
-covid_data_1yearsummary <- 
-  covid_raw %>% 
-  clean_names() %>% 
-  # keep only cumulative columns
-  select(-c(cases, deaths, total_tests, positive_tests, 
-            reported_cases, reported_deaths, reported_tests)
+covid_1yearsummary <- 
+  covid_data_latimes %>%
+  filter(date < "2021-02-01", # one column per county
          ) %>% 
-  filter(date == "2021-02-01", # one column per county
-         area_type == "County", # remove CA row
-         !grepl(c("Unknow|Out of state|Alpine"), area) # remove counties not in tree data
-         ) %>% 
-  rename(county_name = area)
+  group_by(county_name) %>% 
+  summarise(population_av = mean(population),
+            confirmed_cases_av = mean(confirmed_cases),
+            reported_deaths_av = mean(reported_deaths)) %>% 
+  mutate(deaths_per_case_pct = reported_deaths_av / confirmed_cases_av,
+         deaths_per_pop_pct = reported_deaths_av / population_av)
 ```
 
 ```{r Combine data}
-data_comb_1yearsummmary <- 
-  left_join(covid_data_1yearsummary, tree_data, by = "county_name") %>% 
-  mutate(death_rate = cumulative_deaths / cumulative_positive_tests)
+covid_tree_1yearsummmary <- 
+  left_join(covid_1yearsummary, tree_data, by = "county_name")
 ```
 
 ```{r}
-ggplot(data = data_comb_1yearsummmary, aes(x = death_rate, y = county_av_treecanopy_pct)) +
+ggplot(data = covid_tree_1yearsummmary, 
+       aes(x = county_treecanopy_pct, 
+           y = deaths_per_case_pct)) +
   geom_point()
 ```
 
-```{r}
-covid_data_test <- 
-  covid_raw %>% 
-  filter(area == "Alameda")
 
-ggplot(data = covid_raw, aes(x = date, y = deaths, col = area)) +
-  geom_point()
-
-```
 
 
 
 
 ```{r}
-mod <- lm(county_av_treecanopy_pct ~ death_rate, data = data_comb_1yearsummmary)
+mod <- lm(county_treecanopy_pct ~ deaths_per_case_pct, data = covid_tree_1yearsummmary)
 
 summary(mod)
 ```
