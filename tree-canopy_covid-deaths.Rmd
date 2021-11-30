@@ -16,6 +16,7 @@ library(janitor)
 library(sf)
 library(tmap)
 library(patchwork)
+library(broom)
 ```
 
 ```{r Read in data}
@@ -23,7 +24,6 @@ county_geom_raw <- st_read("map_data/counties.shp")
 
 tree_canopy_raw <- read_csv("tree_data/HPI-Individual-Indicators/HPI2_treecanopy.csv")
 
-covid_raw_johnshopkins <- read.csv("covid_data/covid19cases_test.csv") # 2020-02-01 - 2021-11-18
 covid_raw_latimes <- read.csv("covid_data/cdph-county-cases-deaths.csv") # 2020-02-01 - 2021-11-22
 ```
 
@@ -73,32 +73,22 @@ county_geom <-
                                         county_name %in% county_region8 ~ "Los Angeles County",
                                         county_name %in% county_region9 ~ "Orange County",
                                         county_name %in% county_region10 ~ "San Diego - Imperial")) %>% 
-  mutate(county_region_name = fct_relevel(county_region_name, levels = c("Superior California", "North Coast", "San Francisco Bay Area", "Northern San Joaquin Valley", "Central Coast", "Southern San Joaquin Valley", "Inland Empire", "Los Angeles County", "Orange County", "San Diego - Imperial")))
+  mutate(county_region_name = fct_relevel(county_region_name, 
+                                          levels = c("Superior California", "North Coast", 
+                                                     "San Francisco Bay Area", "Northern San Joaquin Valley", 
+                                                     "Central Coast", "Southern San Joaquin Valley", "Inland Empire", 
+                                                     "Los Angeles County", "Orange County", "San Diego - Imperial")))
 ```
 
 ```{r Wrangling tree data}
 tree_data <- 
   tree_canopy_raw %>% 
   clean_names() %>% 
-  select(-c(indicator, treecanopy_n, treecanopy_d, notes) # remove empty columns
-        ) %>% 
-  group_by(county_name) %>% 
-  summarise(county_treecanopy_pct = mean(treecanopy_pct))
+  select(-c(indicator, treecanopy_n, treecanopy_d, notes)) # remove empty columns
 ```
 
-```{r Wrangling covid data, eval=FALSE}
-covid_data_johnshopkins <- 
-  covid_raw_johnshopkins %>% 
-  clean_names() %>% 
-    filter(area_type == "County", # remove CA row
-         !grepl(c("Unknow|Out of state|Alpine"), area) # remove county not in tree data and non-counties
-         ) %>% 
-  rename(county_name = area) %>% 
-  mutate(date = as.Date(ymd(date)))
-```
-
-```{r}
-covid_data_latimes <- 
+```{r Wrangling covid data}
+covid_data <- 
   covid_raw_latimes %>% 
   clean_names() %>% 
   filter(!grepl(c("Alpine"), county)) %>% # remove county not in tree data and non-counties
@@ -110,10 +100,9 @@ covid_data_latimes <-
 
 ## Analysis
 
-
-```{r Basic analysis covid data}
+```{r County average covid data}
 covid_county_average <- 
-  covid_data_latimes %>% 
+  covid_data %>% 
   group_by(county_name) %>% 
   summarise(population_av = mean(population),
             confirmed_cases_av = mean(confirmed_cases),
@@ -122,14 +111,20 @@ covid_county_average <-
          deaths_per_pop_pct = reported_deaths_av / population_av)
 ```
 
+```{r County average tree data}
+tree_county_average <- 
+  tree_data %>% 
+  group_by(county_name) %>% 
+  summarise(county_treecanopy_pct = mean(treecanopy_pct))
+```
 
 ```{r Combining data}
-full_data_combined <- 
-  left_join(x = covid_data_latimes, y = tree_data, by = "county_name") %>% 
+full_data_county_average <- 
+  left_join(x = covid_county_average, y = tree_county_average, by = "county_name") %>% 
   left_join(y = county_geom, by = "county_name")
 
-tree_data_geom <- 
-  left_join(x = tree_data, y = county_geom, by = "county_name") %>% 
+tree_county_average_geom <- 
+  left_join(x = tree_county_average, y = county_geom, by = "county_name") %>% 
   st_as_sf()
 
 covid_county_average_geom <- 
@@ -138,10 +133,10 @@ covid_county_average_geom <-
 ```
 
 
-## Initial viz
+## Map viz
 
 ```{r}
-tm_shape(tree_data_geom) +
+tm_shape(tree_county_average_geom) +
   tm_borders(col = "black", alpha = .65) +
   tm_fill(col = "county_treecanopy_pct",
           style = "cont", 
@@ -157,8 +152,7 @@ tm_shape(covid_county_average_geom) +
 ```
 
 
-
-## Basic Analysis and viz
+## Initial Analysis and basic viz
 
 ```{r Covid basic analysis}
 covid_county_region_month_average <- 
@@ -166,18 +160,14 @@ covid_county_region_month_average <-
   group_by(county_region_name, county_region) %>% 
   summarise(county_region_monthly_death_av = mean(reported_deaths_av),
             county_region_monthly_positive_test_av = mean(confirmed_cases_av))
-  
-  
-
 ```
 
 ```{r Tree basic analysis}
 tree_county_region <- 
-  tree_data_geom %>% 
+  tree_county_average_geom %>% 
   group_by(county_region_name, county_region) %>% 
   summarise(county_region_tree_pct = mean(county_treecanopy_pct))
 ```
-
 
 ```{r Plot basic analysis}
 covid_county_region_month_av_plot <- 
@@ -196,48 +186,43 @@ tree_county_region_plot <-
   geom_col() +
   scale_fill_viridis_d()
 
-covid_county_region_month_av_plot / tree_county_region_plot +plot_layout(guides = "collect")
+covid_county_region_month_av_plot / tree_county_region_plot + plot_layout(guides = "collect")
 ```
 
 
 ## Analysis
 
-```{r Summary covid data}
-covid_1yearsummary <- 
-  covid_data_latimes %>%
-  filter(date < "2021-02-01", # one column per county
-         ) %>% 
-  group_by(county_name) %>% 
-  summarise(population_av = mean(population),
-            confirmed_cases_av = mean(confirmed_cases),
-            reported_deaths_av = mean(reported_deaths)) %>% 
-  mutate(deaths_per_case_pct = reported_deaths_av / confirmed_cases_av,
-         deaths_per_pop_pct = reported_deaths_av / population_av)
+Null hypothesis: In California counties, the tree canopy cover percentage has no impact on the rate of COVID deaths per positive reported case.
+
+Alternative hypothesis: In California counties, the tree canopy cover percentage has an impact on the rate of COVID deaths per positive reported case.
+
+```{r Calculate regression model}
+mod <- lm(deaths_per_case_pct ~ county_treecanopy_pct, data = full_data_county_average)
+
+mod_summary <- summary(mod)
+mod_summary
 ```
 
-```{r Combine data}
-covid_tree_1yearsummmary <- 
-  left_join(covid_1yearsummary, tree_data, by = "county_name")
-```
-
-```{r}
-ggplot(data = covid_tree_1yearsummmary, 
+```{r Plot regression}
+ggplot(data = full_data_county_average, 
        aes(x = county_treecanopy_pct, 
            y = deaths_per_case_pct)) +
-  geom_point()
+  geom_point() +
+  geom_line(data = augment(mod),
+            aes(y = .fitted))
 ```
-
-
-
-
 
 
 ```{r}
-mod <- lm(county_treecanopy_pct ~ deaths_per_case_pct, data = covid_tree_1yearsummmary)
+crit_val <- qnorm(0.025, lower.tail = FALSE)
 
-summary(mod)
+point_est <- mod_summary$coefficients[2, "Estimate"]
+
+SE <- mod_summary$coefficients[2, "Std. Error"]
+
+ci_lower <- round(point_est - (crit_val * SE), 6)
+ci_upper <- round(point_est + (crit_val * SE), 6)
 ```
-
 
 
 
