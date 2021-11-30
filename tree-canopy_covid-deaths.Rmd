@@ -24,7 +24,7 @@ county_geom_raw <- st_read("map_data/counties.shp")
 
 tree_canopy_raw <- read_csv("tree_data/HPI-Individual-Indicators/HPI2_treecanopy.csv")
 
-covid_raw_latimes <- read.csv("covid_data/cdph-county-cases-deaths.csv") # 2020-02-01 - 2021-11-22
+covid_raw_latimes <- read.csv("covid_data/cdph-county-cases-deaths.csv") # 2020-02-01 to 2021-11-22
 ```
 
 ```{r Parameters}
@@ -170,6 +170,8 @@ tree_county_region <-
 ```
 
 ```{r Plot basic analysis}
+##REMOVE legend
+
 covid_county_region_month_av_plot <- 
   ggplot(data = covid_county_region_month_average, 
          aes(x = county_region_monthly_death_av, 
@@ -209,12 +211,12 @@ ggplot(data = full_data_county_average,
            y = deaths_per_case_pct)) +
   geom_point() +
   geom_line(data = augment(mod),
-            aes(y = .fitted))
+            aes(y = .fitted)) ##use geom_smooth look at lab and use other way
 ```
 
 
 ```{r}
-crit_val <- qnorm(0.025, lower.tail = FALSE)
+crit_val <- qnorm(0.025, lower.tail = FALSE) ##use qt() degrees of freedom = 55
 
 point_est <- mod_summary$coefficients[2, "Estimate"]
 
@@ -226,9 +228,7 @@ ci_upper <- round(point_est + (crit_val * SE), 6)
 
 
 
-
-
-
+**control for income (don't do interaction)
 
 
 
