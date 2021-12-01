@@ -214,8 +214,10 @@ covid_county_region_month_av_plot <-
              y = county_region_name, 
              fill = county_region_name)) +
   geom_col(show.legend = FALSE)+
-  scale_fill_viridis_d() #+
-  #theme(axis.title.x = element_text("COVID Deaths per Positive Case (%) in CA County"))
+  scale_fill_viridis_d() +
+  labs(x = "Average Monthly COVID Deaths\nfrom 2020-02-01 to 2021-11-22",
+       y = "") +
+  theme_classic()
 
 tree_county_region_plot <- 
   ggplot(data = tree_county_region,
@@ -223,10 +225,13 @@ tree_county_region_plot <-
              y = county_region_name,
              fill = county_region_name)) +
   geom_col(show.legend = FALSE) +
-  scale_fill_viridis_d() #+
-  #theme(axis.title.x = element_text("Tree Canopy Cover (%) in CA County"))
+  scale_fill_viridis_d() +
+  labs(x = "Average Tree Canopy Cover (%)",
+       y = "") +
+  theme_classic()
 
-covid_county_region_month_av_plot / tree_county_region_plot
+(tree_county_region_plot / covid_county_region_month_av_plot) + 
+    plot_annotation(title = "California County Regions")
 ```
 
 
@@ -244,13 +249,18 @@ mod_summary
 ```
 
 ```{r Plot regression}
-ggplot(data = full_data_county_average, 
-       aes(x = county_treecanopy_pct, 
-           y = deaths_per_case_pct)) +
+mod_plot <- 
+  ggplot(data = full_data_county_average, 
+         aes(x = county_treecanopy_pct, 
+             y = deaths_per_case_pct)) +
   geom_point() +
-  geom_smooth(method = "lm")
-#  geom_line(data = augment(mod),
-#            aes(y = .fitted))
+  geom_smooth(method = "lm") +
+  theme_classic() +
+  labs(x = "Tree Canopy Cover (%)",
+       y = "COVID Deaths per Positive Case (%)",
+       title = "Impacts of Tree Canopy Cover on COVID Deaths per Postive Case \nin California Counties")
+
+mod_plot
 ```
 
 ```{r 95% Confidence interval}
