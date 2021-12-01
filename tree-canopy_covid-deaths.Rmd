@@ -20,7 +20,9 @@ library(broom)
 ```
 
 ```{r Read in data}
-county_geom_raw <- st_read("map_data/counties.shp") 
+county_geom_raw <- st_read("map_data/counties.shp")
+
+income_raw <- read.csv("income_data/UnemploymentReport.csv")
 
 tree_canopy_raw <- read_csv("tree_data/HPI-Individual-Indicators/HPI2_treecanopy.csv")
 
@@ -80,11 +82,24 @@ county_geom <-
                                                      "Los Angeles County", "Orange County", "San Diego - Imperial")))
 ```
 
+```{r Wrangle income data}
+income_data <- 
+  income_raw %>% 
+  clean_names() %>% 
+  rename(county_fips = fips) %>% 
+  filter(!grepl(c("06000"), county_fips),
+         !grepl(c("06003"), county_fips),
+         grepl(c(" "), name))
+```
+
+
 ```{r Wrangling tree data}
 tree_data <- 
   tree_canopy_raw %>% 
   clean_names() %>% 
-  select(-c(indicator, treecanopy_n, treecanopy_d, notes)) # remove empty columns
+  select(-c(indicator, treecanopy_n, treecanopy_d, notes) # remove empty columns
+         ) %>% 
+  mutate(county_fips = paste0("0", county_fips))
 ```
 
 ```{r Wrangling covid data}
@@ -92,8 +107,10 @@ covid_data <-
   covid_raw_latimes %>% 
   clean_names() %>% 
   filter(!grepl(c("Alpine"), county)) %>% # remove county not in tree data and non-counties
-  select(-fips) %>% # remove column repeated in counties geom data
-  rename(county_name = county) %>% 
+  mutate(fips = case_when(fips < 10 ~ paste0("0600", fips),
+                          fips < 100 & fips > 10 ~ paste0("060", fips))) %>%
+  rename(county_name = county,
+         county_fips = fips) %>% 
   mutate(date = as.Date(ymd(date)))
 ```
 
