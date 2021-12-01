@@ -79,7 +79,9 @@ county_geom <-
                                           levels = c("Superior California", "North Coast", 
                                                      "San Francisco Bay Area", "Northern San Joaquin Valley", 
                                                      "Central Coast", "Southern San Joaquin Valley", "Inland Empire", 
-                                                     "Los Angeles County", "Orange County", "San Diego - Imperial")))
+                                                     "Los Angeles County", "Orange County", "San Diego - Imperial")),
+         county_fips = paste0("06", county_fips)) %>% 
+  select(county_fips, county_name, geometry, county_region, county_region_name)
 ```
 
 ```{r Wrangle income data}
@@ -87,11 +89,12 @@ income_data <-
   income_raw %>% 
   clean_names() %>% 
   rename(county_fips = fips) %>% 
-  filter(!grepl(c("06000"), county_fips),
-         !grepl(c("06003"), county_fips),
-         grepl(c(" "), name))
+  filter(!grepl(c("06000"), county_fips), # remove CA
+         !grepl(c("06003"), county_fips), # remove county not in tree data
+         grepl(c(" "), name) # remove empty lines at end of csv
+         ) %>% 
+  select(county_fips, median_household_income_2019)
 ```
-
 
 ```{r Wrangling tree data}
 tree_data <- 
@@ -106,9 +109,10 @@ tree_data <-
 covid_data <- 
   covid_raw_latimes %>% 
   clean_names() %>% 
-  filter(!grepl(c("Alpine"), county)) %>% # remove county not in tree data and non-counties
+  filter(!grepl(c("Alpine"), county)) %>% # remove county not in tree data
   mutate(fips = case_when(fips < 10 ~ paste0("0600", fips),
-                          fips < 100 & fips > 10 ~ paste0("060", fips))) %>%
+                          fips < 100 & fips > 10 ~ paste0("060", fips),
+                          fips > 100 ~ paste0("06", fips))) %>%
   rename(county_name = county,
          county_fips = fips) %>% 
   mutate(date = as.Date(ymd(date)))
@@ -120,7 +124,7 @@ covid_data <-
 ```{r County average covid data}
 covid_county_average <- 
   covid_data %>% 
-  group_by(county_name) %>% 
+  group_by(county_fips) %>% 
   summarise(population_av = mean(population),
             confirmed_cases_av = mean(confirmed_cases),
             reported_deaths_av = mean(reported_deaths)) %>% 
@@ -131,42 +135,59 @@ covid_county_average <-
 ```{r County average tree data}
 tree_county_average <- 
   tree_data %>% 
-  group_by(county_name) %>% 
+  group_by(county_fips) %>% 
   summarise(county_treecanopy_pct = mean(treecanopy_pct))
 ```
 
+
 ```{r Combining data}
 full_data_county_average <- 
-  left_join(x = covid_county_average, y = tree_county_average, by = "county_name") %>% 
-  left_join(y = county_geom, by = "county_name")
+  left_join(x = covid_county_average, y = tree_county_average, by = "county_fips") %>% 
+  left_join(y = county_geom, by = "county_fips") %>% 
+  left_join(y = income_data, by = "county_fips")
 
 tree_county_average_geom <- 
-  left_join(x = tree_county_average, y = county_geom, by = "county_name") %>% 
+  left_join(x = tree_county_average, y = county_geom, by = "county_fips") %>% 
   st_as_sf()
 
 covid_county_average_geom <- 
-  left_join(x = covid_county_average, y = county_geom, by = "county_name") %>% 
+  left_join(x = covid_county_average, y = county_geom, by = "county_fips") %>% 
   st_as_sf()
 ```
 
 
 ## Map viz
 
-```{r}
-tm_shape(tree_county_average_geom) +
+```{r tree map viz, warning=FALSE}
+tree_map <- 
+  tm_shape(tree_county_average_geom) +
   tm_borders(col = "black", alpha = .65) +
   tm_fill(col = "county_treecanopy_pct",
           style = "cont", 
           n = 5,
-          palette ="viridis")
+          palette ="viridis",
+          title = "Tree Canopy Cover\nPercentage") +
+  tm_layout(main.title = "Average Tree Canopy Cover in CA Counties",
+            main.title.size = 1)
 
-tm_shape(covid_county_average_geom) +
+tree_map
+```
+
+```{r covid map viz, warning=FALSE}
+covid_map <- 
+  tm_shape(covid_county_average_geom) +
   tm_borders(col = "black", alpha = .65) +
   tm_fill(col = "deaths_per_case_pct",
           style = "cont", 
           n = 5,
-          palette ="viridis")
+          palette ="viridis",
+          title = "Percent of Deaths\nper Positive Case") +
+  tm_layout(main.title = "Average COVID Death per Positive Case in CA Counties",
+            main.title.size = 1)
+
+covid_map
 ```
+
 
 
 ## Initial Analysis and basic viz
@@ -187,8 +208,6 @@ tree_county_region <-
 ```
 
 ```{r Plot basic analysis}
-##REMOVE legend
-
 covid_county_region_month_av_plot <- 
   ggplot(data = covid_county_region_month_average, 
          aes(x = county_region_monthly_death_av, 
@@ -234,7 +253,6 @@ ggplot(data = full_data_county_average,
 #            aes(y = .fitted))
 ```
 
-
 ```{r 95% Confidence interval}
 crit_val <- qt(0.025, df = 55, lower.tail = FALSE)
 
@@ -249,7 +267,20 @@ ci_upper <- round(point_est + (crit_val * SE), 6)
 
 
 **control for income (don't do interaction)
+```{r Calculate regression model controlling for income}
+mod_income <- lm(deaths_per_case_pct ~ county_treecanopy_pct + median_household_income_2019, data = full_data_county_average)
 
+mod_income_summary <- summary(mod_income)
+mod_income_summary
+```
+
+```{r Plot regression controlled for income}
+ggplot(data = full_data_county_average, 
+       aes(x = county_treecanopy_pct, 
+           y = deaths_per_case_pct)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
 
 
 
