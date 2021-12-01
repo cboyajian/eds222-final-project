@@ -92,7 +92,7 @@ covid_data <-
   covid_raw_latimes %>% 
   clean_names() %>% 
   filter(!grepl(c("Alpine"), county)) %>% # remove county not in tree data and non-counties
-  select(-fips) %>% # remove column contained in counties geom data
+  select(-fips) %>% # remove column repeated in counties geom data
   rename(county_name = county) %>% 
   mutate(date = as.Date(ymd(date)))
 ```
@@ -177,18 +177,20 @@ covid_county_region_month_av_plot <-
          aes(x = county_region_monthly_death_av, 
              y = county_region_name, 
              fill = county_region_name)) +
-  geom_col()+
-  scale_fill_viridis_d()
+  geom_col(show.legend = FALSE)+
+  scale_fill_viridis_d() #+
+  #theme(axis.title.x = element_text("COVID Deaths per Positive Case (%) in CA County"))
 
 tree_county_region_plot <- 
   ggplot(data = tree_county_region,
          aes(x = county_region_tree_pct,
              y = county_region_name,
              fill = county_region_name)) +
-  geom_col() +
-  scale_fill_viridis_d()
+  geom_col(show.legend = FALSE) +
+  scale_fill_viridis_d() #+
+  #theme(axis.title.x = element_text("Tree Canopy Cover (%) in CA County"))
 
-covid_county_region_month_av_plot / tree_county_region_plot + plot_layout(guides = "collect")
+covid_county_region_month_av_plot / tree_county_region_plot
 ```
 
 
@@ -210,13 +212,14 @@ ggplot(data = full_data_county_average,
        aes(x = county_treecanopy_pct, 
            y = deaths_per_case_pct)) +
   geom_point() +
-  geom_line(data = augment(mod),
-            aes(y = .fitted)) ##use geom_smooth look at lab and use other way
+  geom_smooth(method = "lm")
+#  geom_line(data = augment(mod),
+#            aes(y = .fitted))
 ```
 
 
-```{r}
-crit_val <- qnorm(0.025, lower.tail = FALSE) ##use qt() degrees of freedom = 55
+```{r 95% Confidence interval}
+crit_val <- qt(0.025, df = 55, lower.tail = FALSE)
 
 point_est <- mod_summary$coefficients[2, "Estimate"]
 
