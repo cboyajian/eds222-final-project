@@ -170,6 +170,8 @@ tree_map <-
   tm_layout(main.title = "Average Tree Canopy Cover in CA Counties",
             main.title.size = 1)
 
+tmap_save(tree_map, "figs/tree_map.png")
+
 tree_map
 ```
 
@@ -184,6 +186,8 @@ covid_map <-
           title = "Percent of Deaths\nper Positive Case") +
   tm_layout(main.title = "Average COVID Death per Positive Case in CA Counties",
             main.title.size = 1)
+
+tmap_save(covid_map, "figs/covid_map.png")
 
 covid_map
 ```
@@ -230,8 +234,13 @@ tree_county_region_plot <-
        y = "") +
   theme_classic()
 
-(tree_county_region_plot / covid_county_region_month_av_plot) + 
-    plot_annotation(title = "California County Regions")
+comb_county_region_plot <- 
+  (tree_county_region_plot / covid_county_region_month_av_plot) + 
+  plot_annotation(title = "California County Regions")
+
+ggsave(plot = comb_county_region_plot, filename = "figs/county_region_tree_covid_plot.png")
+
+comb_county_region_plot
 ```
 
 
@@ -260,6 +269,8 @@ mod_plot <-
        y = "COVID Deaths per Positive Case (%)",
        title = "Impacts of Tree Canopy Cover on COVID Deaths per Postive Case \nin California Counties")
 
+ggsave(plot = mod_plot, filename = "figs/simple_regression_plot.png")
+
 mod_plot
 ```
 
@@ -276,15 +287,20 @@ ci_upper <- round(point_est + (crit_val * SE), 6)
 
 
 
+
+
+
+
+
 **control for income (don't do interaction)
-```{r Calculate regression model controlling for income}
+```{r Calculate regression model controlling for income, eval=FALSE}
 mod_income <- lm(deaths_per_case_pct ~ county_treecanopy_pct + median_household_income_2019, data = full_data_county_average)
 
 mod_income_summary <- summary(mod_income)
 mod_income_summary
 ```
 
-```{r Plot regression controlled for income}
+```{r Plot regression controlled for income, eval=FALSE}
 ggplot(data = full_data_county_average, 
        aes(x = county_treecanopy_pct, 
            y = deaths_per_case_pct)) +
