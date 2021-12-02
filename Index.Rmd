@@ -4,10 +4,11 @@ title: Impacts of Tree Canopy Cover Percentage on the Rate of COVID Deaths per P
 author: "Clarissa Boyajian"
 date: "12/1/2021"
 output:
+  html_document:
+    toc: yes
   pdf_document:
     toc: yes
     latex_engine: xelatex
-  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -134,7 +135,7 @@ covid_data <-
 ```
 
 
-## Basic Analysis
+## Basic Data Analysis
 
 For my analysis I planned to conduct a simple OLS linear regression, but first conducted some basic analysis to explore the data. To begin, I needed to transform the tree canopy and COVID-19 data to be at the same spatial and temporal resolution. First, I calculated the tree canopy cover percentage for each county using the `group_by()` and `summarize()` functions to create an average from the census tract data. Next, I calculated each county's average population, average daily number of confirmed positive cases, and average daily reported deaths also using `group_by()` and `summarize()` functions. Finally, I calculated a rate of deaths per confirmed case and per capita for each county. Once this was completed, I combined all datasets based on the county Federal Information Processing System (FIPS) codes to create a dataframe including tree canopy, COVID-19, and income data as well as geometries for each county.
 
